@@ -1,0 +1,23 @@
+Un programme ne prenant pas d'arguments, mais demandant un password dans l'entrée standard, via un scanf
+qui attend un entier.
+Le paramètre entré par l'utilisateur est envoyé dans la fonction test et soustrait à 322424845.
+Si la différence est comprise entre 1 et 9 ou 16 et 21, alors cette différence est envoyée à la fonction decrypt.
+Sinon, un nombre random est envoyé.
+La fonction decrypt utilise la chaine de caractère "Q}|u`sfg~sf{}|a3", et va appliquer un XOR à chaque caractère
+avec l'argument. Si le résultat est égal à "Congratulations!" alors un shell est lancé.
+
+On cherche donc à résoudre "l'équation":
+ord('Q') ^ diff = ord('C')
+ord('Q') ^ ord('C') = diff
+ascii code Q: 		0101 0001
+ascii code C: 		0100 0011
+résultat du xor :	0001 0010   Soit 0x12, donc différence de 18.
+322424845 - 18 = 322424827
+
+	level03@OverRide:~$ ./level03
+	***********************************
+	*               level03         **
+	***********************************
+	Password:322424827
+	$ whoami
+	level04

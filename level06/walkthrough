@@ -1,0 +1,62 @@
+Un programme demandant un login puis un "serial".
+En decompilant le programme, on peut voir qu'il appellera un /bin/sh, si le retour de la fonction auth() renvoie 0.
+Cette fonction prend deux arguments, le login et le serial, lus dans l'entrée standard.
+
+Une sorte de hashage est appliqué sur le login, et le résultat est comparé avec le "serial", si les deux sont egaux alors
+le /bin/sh sera lancé.
+
+On peut voir quelques petites conditions sur le login:
+- entre 5 et 32 caractères
+- pas de code ascii < 32
+
+On aimerait pouvoir utiliser gdb pour lire le hash au moment de la comparaison pour utiliser le resultat comme serial,
+mais un ptrace nous en empeche. On va essayer d'utiliser gdb pour eviter le ptrace :
+
+	0x080487b5 <+109>:   call   0x80485f0 <ptrace@plt>
+	0x080487ba <+114>:   cmp    $0xffffffff,%eax
+	0x080487bd <+117>:   jne    0x80487ed <auth+165>
+
+0x080487b5:   adresse ou ptrace est call
+0x80487ed:    adresse ou la fonction jump si le ptrace ne détecte pas de problèmes
+
+	0x08048866 <+286>:   cmp    -0x10(%ebp),%eax
+
+0x08048866 comparaison avec notre serial, c'est la qu'on souhaite afficher le hash
+
+On place nos breakpoint et on se prepare a "bypass" le retour du ptrace, en forcant gdb a jump à la suite :
+	(gdb) b*0x080487b5
+	Breakpoint 1 at 0x80487b5
+	(gdb) b*0x08048866
+	Breakpoint 2 at 0x8048866
+	(gdb) r
+	Starting program: /home/users/level06/level06
+	***********************************
+	*               level06           *
+	***********************************
+	-> Enter Login: easypeasy
+	***********************************
+	***** NEW ACCOUNT DETECTED ********
+	***********************************
+	-> Enter Serial: .
+
+	Breakpoint 1, 0x080487b5 in auth ()
+	(gdb) jump *0x080487ed
+	Continuing at 0x80487ed.
+
+	Breakpoint 2, 0x08048866 in auth ()
+	(gdb) x/x $ebp-16
+	0xffffd698:     0x005f2242
+
+0x005f2242 correspond à 6234690 en décimal
+	level06@OverRide:~$ ./level06
+	***********************************
+	*               level06           *
+	***********************************
+	-> Enter Login: easypeasy
+	***********************************
+	***** NEW ACCOUNT DETECTED ********
+	***********************************
+	-> Enter Serial: 6234690
+	Authenticated!
+	$ whoami
+	level07

